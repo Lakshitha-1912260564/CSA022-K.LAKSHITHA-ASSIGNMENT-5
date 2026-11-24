@@ -1,0 +1,279 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define NUM_GROUPS 8
+
+const char *BLOOD_GROUPS[NUM_GROUPS] = {
+    "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"
+};
+
+typedef struct {
+    int day, month, year;
+} Date;
+
+typedef struct {
+    int id;
+    char name[50];
+    char bloodGroup[5];
+    int age;
+    char phone[15];
+    Date lastDonation;
+} Donor;
+
+typedef struct {
+    char bloodGroup[5];
+    int units;
+} StockRecord;
+
+typedef struct {
+    Donor *data;
+    size_t size;
+    size_t capacity;
+} DonorList;
+
+typedef struct {
+    int count;
+    int youngestId;
+} EligibilityStats;
+
+/* ==================== TASK A2: RECURSION ==================== */
+
+int digitalRoot(int n) {
+    if (n < 0) n = -n;
+    if (n < 10) return n; /* Base case */
+    int sum = 0;
+    while (n > 0) {
+        sum += n % 10;
+        n /= 10;
+    }
+    return digitalRoot(sum); /* Recursive case */
+}
+
+double powerLinear(double base, int n, long *calls) {
+    if (calls) (*calls)++;
+    if (n == 0) return 1.0;
+    return base * powerLinear(base, n - 1, calls);
+}
+
+double powerFast(double base, int n, long *calls) {
+    if (calls) (*calls)++;
+    if (n == 0) return 1.0;
+    double half = powerFast(base, n / 2, calls);
+    if (n % 2 == 0) return half * half;
+    return base * half * half;
+}
+
+/* ==================== TASK A4: GROWABLE DONOR LIST ==================== */
+
+void initDonorList(DonorList *list, size_t initialCap) {
+    list->data = malloc(initialCap * sizeof(Donor));
+    if (!list->data) {
+        fprintf(stderr, "Fatal: Initial malloc failed.\n");
+        exit(EXIT_FAILURE);
+    }
+    list->size = 0;
+    list->capacity = initialCap;
+}
+
+int addDonor(DonorList *list, const Donor *d) {
+    if (list->size == list->capacity) {
+        size_t newCap = (list->capacity == 0) ? 4 : list->capacity * 2;
+        Donor *temp = realloc(list->data, newCap * sizeof(Donor));
+        if (!temp) {
+            /* Safe failure handling: original list->data remains intact */
+            fprintf(stderr, "Error: realloc failed; donor %d not added.\n", d->id);
+            return 0;
+        }
+        list->data = temp;
+        list->capacity = newCap;
+    }
+    list->data[list->size++] = *d;
+    return 1;
+}
+
+void freeDonorList(DonorList *list) {
+    free(list->data);
+    list->data = NULL;
+    list->size = 0;
+    list->capacity = 0;
+}
+
+/* ==================== TASK A1: ELIGIBILITY & MULTI-RETURN ==================== */
+
+int isEligible(const Donor *d) {
+    return (d->age >= 18 && d->age <= 65);
+}
+
+/* Alternative 1: Return multiple values via pointer parameters */
+void findEligibleByPtr(const DonorList *list, const char *group,
+                       int *eligibleCount, int *youngestId) {
+    *eligibleCount = 0;
+    *youngestId = -1;
+    int minAge = 999;
+
+    for (size_t i = 0; i < list->size; i++) {
+        if (strcmp(list->data[i].bloodGroup, group) == 0 && isEligible(&list->data[i])) {
+            (*eligibleCount)++;
+            if (list->data[i].age < minAge) {
+                minAge = list->data[i].age;
+                *youngestId = list->data[i].id;
+            }
+        }
+    }
+}
+
+/* Alternative 2: Return multiple values via a structure */
+EligibilityStats findEligibleByStruct(const DonorList *list, const char *group) {
+    EligibilityStats stats = {0, -1};
+    findEligibleByPtr(list, group, &stats.count, &stats.youngestId);
+    return stats;
+}
+
+/* ==================== TASK A3: POINTERS & LOWEST STOCK ==================== */
+
+int *findLowestStock(int stock[], int n) {
+    if (n <= 0) return NULL;
+    int *minPtr = &stock[0];
+    for (int i = 1; i < n; i++) {
+        if (stock[i] < *minPtr) {
+            minPtr = &stock[i];
+        }
+    }
+    return minPtr; /* Safe: points into caller's array, not a local variable */
+}
+
+/* ==================== TASK A5: TEXT & BINARY FILE STORAGE ==================== */
+
+int saveDonorsText(const char *filename, const DonorList *list) {
+    FILE *fp = fopen(filename, "w");
+    if (!fp) return 0;
+    for (size_t i = 0; i < list->size; i++) {
+        const Donor *d = &list->data[i];
+        fprintf(fp, "%d|%s|%s|%d|%s|%02d/%02d/%04d\n",
+                d->id, d->name, d->bloodGroup, d->age, d->phone,
+                d->lastDonation.day, d->lastDonation.month, d->lastDonation.year);
+    }
+    fclose(fp);
+    return 1;
+}
+
+int loadDonorsText(const char *filename, DonorList *list) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) return 0;
+    Donor d;
+    while (fscanf(fp, "%d|%49[^|]|%4[^|]|%d|%14[^|]|%d/%d/%d\n",
+                  &d.id, d.name, d.bloodGroup, &d.age, d.phone,
+                  &d.lastDonation.day, &d.lastDonation.month, &d.lastDonation.year) == 8) {
+        addDonor(list, &d);
+    }
+    fclose(fp);
+    return 1;
+}
+
+int initStockBinary(const char *filename, const StockRecord records[], int n) {
+    FILE *fp = fopen(filename, "wb");
+    if (!fp) return 0;
+    fwrite(records, sizeof(StockRecord), (size_t)n, fp);
+    fclose(fp);
+    return 1;
+}
+
+/* Update a single record in-place using fseek + fread + fwrite */
+int updateStockInPlace(const char *filename, int groupIndex, int deltaUnits) {
+    if (groupIndex < 0 || groupIndex >= NUM_GROUPS) return 0;
+    FILE *fp = fopen(filename, "r+b");
+    if (!fp) return 0;
+
+    long offset = (long)groupIndex * (long)sizeof(StockRecord);
+    if (fseek(fp, offset, SEEK_SET) != 0) {
+        fclose(fp);
+        return 0;
+    }
+
+    StockRecord rec;
+    if (fread(&rec, sizeof(StockRecord), 1, fp) != 1) {
+        fclose(fp);
+        return 0;
+    }
+
+    if (rec.units + deltaUnits < 0) {
+        fprintf(stderr, "Error: Insufficient stock for %s.\n", rec.bloodGroup);
+        fclose(fp);
+        return 0;
+    }
+
+    rec.units += deltaUnits;
+    fseek(fp, offset, SEEK_SET);
+    fwrite(&rec, sizeof(StockRecord), 1, fp);
+    fclose(fp);
+    return 1;
+}
+
+int getGroupIndex(const char *group) {
+    for (int i = 0; i < NUM_GROUPS; i++) {
+        if (strcmp(BLOOD_GROUPS[i], group) == 0) return i;
+    }
+    return -1;
+}
+
+/* ==================== MAIN & TASK A3.3 CLI ==================== */
+
+int main(int argc, char *argv[]) {
+    DonorList donors;
+    initDonorList(&donors, 2);
+
+    Donor sample[] = {
+        {1001, "Arun Kumar",   "O+", 24, "9876543210", {10, 8, 2026}},
+        {1002, "Meera Nair",   "O+", 21, "9876501234", {15, 7, 2026}},
+        {1003, "Vikram S",     "A-", 35, "9123456780", {20, 6, 2026}},
+        {1004, "Priya Devi",   "B+", 17, "9988776655", { 1, 9, 2026}} /* Ineligible (<18) */
+    };
+    for (int i = 0; i < 4; i++) addDonor(&donors, &sample[i]);
+
+    saveDonorsText("donors.txt", &donors);
+
+    StockRecord initialStock[NUM_GROUPS] = {
+        {"A+", 12}, {"A-", 5}, {"B+", 18}, {"B-", 4},
+        {"AB+", 7}, {"AB-", 3}, {"O+", 25}, {"O-", 6}
+    };
+    initStockBinary("stock.bin", initialStock, NUM_GROUPS);
+
+    /* CLI Handling (Task A3.3) */
+    if (argc >= 3 && strcmp(argv[1], "find") == 0) {
+        EligibilityStats st = findEligibleByStruct(&donors, argv[2]);
+        printf("Eligible %s donors: %d | Youngest ID: %d\n",
+               argv[2], st.count, st.youngestId);
+    } else if (argc == 4 && strcmp(argv[1], "issue") == 0) {
+        int idx = getGroupIndex(argv[2]);
+        int qty = atoi(argv[3]);
+        if (idx == -1 || qty <= 0) {
+            fprintf(stderr, "Usage: %s issue <BloodGroup> <PositiveUnits>\n", argv[0]);
+            freeDonorList(&donors);
+            return EXIT_FAILURE;
+        }
+        if (updateStockInPlace("stock.bin", idx, -qty)) {
+            printf("Issued %d units of %s.\n", qty, argv[2]);
+        }
+    } else if (argc > 1) {
+        fprintf(stderr, "Invalid arguments.\nUsage:\n  %s find <Group>\n  %s issue <Group> <Units>\n",
+                argv[0], argv[0]);
+        freeDonorList(&donors);
+        return EXIT_FAILURE;
+    } else {
+        /* Default demonstration run */
+        printf("Digital root of 9875: %d\n", digitalRoot(9875));
+        EligibilityStats st = findEligibleByStruct(&donors, "O+");
+        printf("Eligible O+ donors: %d | Youngest ID: %d (Check digit: %d)\n",
+               st.count, st.youngestId, digitalRoot(st.youngestId));
+
+        int rawStock[NUM_GROUPS] = {12, 5, 18, 4, 7, 3, 25, 6};
+        int *lowest = findLowestStock(rawStock, NUM_GROUPS);
+        printf("Lowest stock before replenishment: %d\n", *lowest);
+        *lowest += 10;
+        printf("Lowest stock after replenishment : %d\n", *lowest);
+    }
+
+    freeDonorList(&donors);
+    return 0;
+}
