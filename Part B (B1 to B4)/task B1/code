@@ -1,0 +1,74 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+long linearCalls = 0;
+long fastCalls = 0;
+
+int digitalRoot(int n) {
+    if (n < 0) n = -n;
+    if (n < 10) return n;
+    int sum = 0;
+    while (n > 0) {
+        sum += n % 10;
+        n /= 10;
+    }
+    return digitalRoot(sum);
+}
+
+double powerLinear(double base, int n) {
+    linearCalls++;
+    if (n == 0) return 1.0;
+    return base * powerLinear(base, n - 1);
+}
+
+double powerFast(double base, int n) {
+    fastCalls++;
+    if (n == 0) return 1.0;
+    double half = powerFast(base, n / 2);
+    if (n % 2 == 0) return half * half;
+    return base * half * half;
+}
+
+double powerIterative(double base, int n) {
+    double result = 1.0;
+    while (n > 0) {
+        if (n % 2 == 1) result *= base;
+        base *= base;
+        n /= 2;
+    }
+    return result;
+}
+
+int main(int argc, char *argv[]) {
+    /* B1.1 Validation tests */
+    printf("=== B1.1 Validation ===\n");
+    printf("digitalRoot(0) = %d, digitalRoot(1) = %d, digitalRoot(942) = %d\n",
+           digitalRoot(0), digitalRoot(1), digitalRoot(942));
+    printf("2^0 = %.1f, 2^1 = %.1f, 2^10 = %.1f\n\n",
+           powerFast(2.0, 0), powerFast(2.0, 1), powerFast(2.0, 10));
+
+    /* B1.3 Call count comparison */
+    int testN[] = {10, 100, 1000, 10000};
+    printf("=== B1.3 Call Count Comparison ===\n");
+    printf("%-10s %-15s %-15s\n", "n", "Linear Calls", "Halving Calls");
+    for (int i = 0; i < 4; i++) {
+        linearCalls = 0;
+        fastCalls = 0;
+        powerLinear(1.0001, testN[i]);
+        powerFast(1.0001, testN[i]);
+        printf("%-10d %-15ld %-15ld\n", testN[i], linearCalls, fastCalls);
+    }
+
+    /* B1.4 Stack overflow probe (run as: ./b1 <large_n>, e.g., ./b1 500000) */
+    if (argc == 2) {
+        int largeN = atoi(argv[1]);
+        printf("\nTesting iterative power for n = %d: %.4f\n",
+               largeN, powerIterative(1.000001, largeN));
+        printf("Testing linear recursive power for n = %d (may stack overflow)...\n", largeN);
+        fflush(stdout);
+        linearCalls = 0;
+        double res = powerLinear(1.000001, largeN);
+        printf("Survived with result = %.4f (%ld calls)\n", res, linearCalls);
+    }
+    return 0;
+}
