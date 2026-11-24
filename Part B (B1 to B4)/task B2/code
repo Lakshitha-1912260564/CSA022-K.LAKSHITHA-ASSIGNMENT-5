@@ -1,0 +1,61 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define NUM_GROUPS 8
+
+int *findLowestStock(int *stock, int n) {
+    if (!stock || n <= 0) return NULL;
+    int *lowest = stock;
+    for (int i = 1; i < n; i++) {
+        if (*(stock + i) < *lowest) {
+            lowest = stock + i;
+        }
+    }
+    return lowest;
+}
+
+int isValidGroup(const char *grp) {
+    const char *valid[NUM_GROUPS] = {"A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"};
+    for (int i = 0; i < NUM_GROUPS; i++) {
+        if (strcmp(grp, valid[i]) == 0) return i;
+    }
+    return -1;
+}
+
+int main(void) {
+    int *stock = malloc(NUM_GROUPS * sizeof(int));
+    if (!stock) return EXIT_FAILURE;
+
+    int initial[NUM_GROUPS] = {15, 4, 22, 9, 6, 2, 30, 8};
+    memcpy(stock, initial, NUM_GROUPS * sizeof(int));
+
+    int *p = stock;
+    printf("Base address p        : %p\n", (void *)p);
+    printf("Address p + 3         : %p\n", (void *)(p + 3));
+    printf("Value *(p + 3)        : %d\n", *(p + 3));
+    printf("Value p[3]            : %d\n", p[3]);
+    int val = *p++;
+    printf("Value *p++            : %d (p now points to stock[1] = %d)\n", val, *p);
+
+    /* Adversarial input checks */
+    const char *testGroups[] = {"O+", "X+", ""};
+    int testUnits[] = {5, -10, 100};
+    for (int i = 0; i < 3; i++) {
+        int idx = isValidGroup(testGroups[i]);
+        if (idx == -1 || testUnits[i] <= 0 || stock[idx] < testUnits[i]) {
+            printf("[Rejected Input] Group='%s', Units=%d\n", testGroups[i], testUnits[i]);
+        } else {
+            stock[idx] -= testUnits[i];
+            printf("[Accepted Issue] Group='%s', Remaining=%d\n", testGroups[i], stock[idx]);
+        }
+    }
+
+    int *minSlot = findLowestStock(stock, NUM_GROUPS);
+    if (minSlot) {
+        printf("Lowest stock slot value: %d\n", *minSlot);
+    }
+
+    free(stock);
+    return 0;
+}
