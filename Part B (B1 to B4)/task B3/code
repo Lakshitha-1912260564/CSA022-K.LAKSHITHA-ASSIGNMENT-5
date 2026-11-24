@@ -1,0 +1,87 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#define NUM_GROUPS 8
+
+typedef struct {
+    char bloodGroup[5];
+    int units;
+} StockRecord;
+
+long getFileSize(const char *filename) {
+    FILE *fp = fopen(filename, "rb");
+    if (!fp) return -1;
+    fseek(fp, 0, SEEK_END);
+    long sz = ftell(fp);
+    fclose(fp);
+    return sz;
+}
+
+void writeStockText(const char *filename, const StockRecord recs[], int n) {
+    FILE *fp = fopen(filename, "w");
+    if (!fp) return;
+    for (int i = 0; i < n; i++) {
+        fprintf(fp, "%s %d\n", recs[i].bloodGroup, recs[i].units);
+    }
+    fclose(fp);
+}
+
+void writeStockBinary(const char *filename, const StockRecord recs[], int n) {
+    FILE *fp = fopen(filename, "wb");
+    if (!fp) return;
+    fwrite(recs, sizeof(StockRecord), (size_t)n, fp);
+    fclose(fp);
+}
+
+void updateBinaryInPlace(const char *filename, int index, int newUnits) {
+    FILE *fp = fopen(filename, "r+b");
+    if (!fp) return;
+    long offset = (long)index * (long)sizeof(StockRecord);
+    fseek(fp, offset, SEEK_SET);
+    StockRecord rec;
+    if (fread(&rec, sizeof(StockRecord), 1, fp) == 1) {
+        rec.units = newUnits;
+        fseek(fp, offset, SEEK_SET);
+        fwrite(&rec, sizeof(StockRecord), 1, fp);
+    }
+    fclose(fp);
+}
+
+int main(void) {
+    StockRecord recs[NUM_GROUPS] = {
+        {"A+", 120}, {"A-", 45}, {"B+", 180}, {"B-", 30},
+        {"AB+", 65}, {"AB-", 20}, {"O+", 250}, {"O-", 55}
+    };
+
+    writeStockText("stock_bench.txt", recs, NUM_GROUPS);
+    writeStockBinary("stock_bench.bin", recs, NUM_GROUPS);
+
+    printf("Text file size  : %ld bytes\n", getFileSize("stock_bench.txt"));
+    printf("Binary file size: %ld bytes (sizeof(StockRecord) = %zu)\n\n",
+           getFileSize("stock_bench.bin"), sizeof(StockRecord));
+
+    const int UPDATES = 10000;
+
+    clock_t t1 = clock();
+    for (int i = 0; i < UPDATES; i++) {
+        recs[i % NUM_GROUPS].units += 1;
+        writeStockText("stock_bench.txt", recs, NUM_GROUPS);
+    }
+    clock_t t2 = clock();
+
+    clock_t t3 = clock();
+    for (int i = 0; i < UPDATES; i++) {
+        int idx = i % NUM_GROUPS;
+        updateBinaryInPlace("stock_bench.bin", idx, recs[idx].units);
+    }
+    clock_t t4 = clock();
+
+    double textSec = (double)(t2 - t1) / CLOCKS_PER_SEC;
+    double binSec  = (double)(t4 - t3) / CLOCKS_PER_SEC;
+
+    printf("Time for %d full text rewrites   : %.4f s\n", UPDATES, textSec);
+    printf("Time for %d binary fseek updates : %.4f s\n", UPDATES, binSec);
+    return 0;
+}
