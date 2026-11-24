@@ -1,0 +1,82 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+typedef struct {
+    int id;
+    char name[32];
+    char bloodGroup[5];
+    int age;
+} Donor;
+
+typedef struct {
+    Donor *data;
+    size_t size;
+    size_t capacity;
+    size_t totalCopied;
+    size_t reallocCount;
+} DynamicDonors;
+
+int pushDonor(DynamicDonors *list, Donor d, int doubleMode) {
+    if (list->size == list->capacity) {
+        size_t newCap = doubleMode
+            ? ((list->capacity == 0) ? 4 : list->capacity * 2)
+            : (list->capacity + 10);
+
+        Donor *tmp = realloc(list->data, newCap * sizeof(Donor));
+        if (!tmp) return 0;
+
+        /* Worst-case elements copied when block relocates */
+        list->totalCopied += list->size;
+        list->reallocCount++;
+        list->data = tmp;
+        list->capacity = newCap;
+    }
+    list->data[list->size++] = d;
+    return 1;
+}
+
+void runBenchmark(int n, int doubleMode) {
+    const char *groups[] = {"A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"};
+    DynamicDonors list = {NULL, 0, 0, 0, 0};
+
+    clock_t start = clock();
+    for (int i = 0; i < n; i++) {
+        Donor d;
+        d.id = 10000 + i;
+        snprintf(d.name, sizeof(d.name), "Donor_%d", i);
+        strcpy(d.bloodGroup, groups[i % 8]);
+        d.age = 18 + (i % 52);
+        pushDonor(&list, d, doubleMode);
+    }
+    clock_t end = clock();
+
+    /* Generate O+ eligibility report */
+    int eligibleOPlus = 0;
+    for (size_t i = 0; i < list.size; i++) {
+        if (strcmp(list.data[i].bloodGroup, "O+") == 0 &&
+            list.data[i].age >= 18 && list.data[i].age <= 65) {
+            eligibleOPlus++;
+        }
+    }
+
+    double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
+    printf("%-14s | N=%-6d | Time=%.4fs | Reallocs=%-5zu | Copied=%-10zu | Unused=%-6zu | O+ Eligible=%d\n",
+           doubleMode ? "Doubling (2x)" : "Fixed (+10)",
+           n, elapsed, list.reallocCount, list.totalCopied,
+           list.capacity - list.size, eligibleOPlus);
+
+    free(list.data);
+}
+
+int main(void) {
+    printf("=== Task B4: Growable Donor List Scaling & Eligibility Report ===\n");
+    int sizes[] = {500, 5000, 50000};
+    for (int i = 0; i < 3; i++) {
+        runBenchmark(sizes[i], 1);
+        runBenchmark(sizes[i], 0);
+        printf("-----------------------------------------------------------------------------------------------------\n");
+    }
+    return 0;
+}
